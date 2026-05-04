@@ -1,0 +1,349 @@
+# SPEC.md — AI SaaS Content Automation System (Content Factory)
+
+## 1. Concept & Vision
+
+An AI-powered content factory that transforms content creation from chaotic and reactive into a systematic, data-driven machine. Creators receive precise, AI-generated instructions on what to film/post, understand exactly when trends are emerging, and can measure the algorithmic performance of every piece of content they publish. The system learns from engagement patterns to continuously improve content recommendations.
+
+**Feel:** Clean SaaS dashboard — think Linear meets Notion meets a data analytics platform. Dark mode by default, crisp typography, micro-animations on every interaction.
+
+---
+
+## 2. Design Language
+
+**Aesthetic:** Dark professional SaaS — inspired by Linear/Vercel/Loom dashboards
+**Color Palette:**
+- Background: `#0a0a0f` (deep near-black)
+- Surface: `#111118` (cards/panels)
+- Border: `#1e1e2e` (subtle separators)
+- Primary: `#6366f1` (indigo — actions, CTAs)
+- Accent: `#22d3ee` (cyan — AI features, highlights)
+- Success: `#10b981`
+- Warning: `#f59e0b`
+- Text: `#f1f5f9` (primary), `#94a3b8` (secondary)
+- Muted: `#475569`
+
+**Typography:**
+- UI: Inter (system fallback: -apple-system, sans-serif)
+- Monospace: JetBrains Mono (code/data)
+
+**Spatial System:** 4px base unit. Cards: 24px padding, 12px radius. Sections: 48px gap.
+
+---
+
+## 3. Architecture
+
+```
+Frontend (Next.js 14 / TypeScript)
+  └── App Router pages + API routes
+      ├── /dashboard — main overview
+      ├── /content — content pieces list + generator
+      ├── /trends — trend scanner
+      ├── /instructions — creator instructions feed
+      ├── /analytics — performance dashboard
+      └── /settings — account + platform connections
+
+Backend (Python/FastAPI)
+  └── /api/v1/
+      ├── /auth — JWT auth
+      ├── /content — CRUD + AI generation
+      ├── /trends — trend aggregation
+      ├── /instructions — AI instruction engine
+      ├── /analytics — performance data
+      ├── /scheduler — post scheduling (Postiz API)
+      └── /workflows — n8n webhook triggers
+
+Data Layer
+  └── PostgreSQL 15 via SQLAlchemy 2.0
+      └── Async session management
+
+AI Layer
+  └── OpenAI GPT-4 Turbo (via python-openai)
+      ├── Content generation prompts
+      ├── Trend analysis prompts
+      └── Creator instruction prompts
+
+Integrations
+  ├── Postiz API — social media scheduling
+  ├── n8n Webhooks — automation workflows
+  └── YouTube/TikTok APIs — trend data (mock for MVP)
+```
+
+---
+
+## 4. Data Models
+
+### User
+```
+id: UUID (PK)
+email: String (unique)
+password_hash: String
+full_name: String
+avatar_url: String?
+openai_key: String? (encrypted)
+postiz_token: String? (encrypted)
+created_at: DateTime
+```
+
+### ContentPiece
+```
+id: UUID (PK)
+user_id: UUID (FK → User)
+title: String
+description: Text?
+content_type: Enum[video, post, story, article]
+status: Enum[draft, scheduled, published, archived]
+generated_content: JSON (AI output)
+scheduled_for: DateTime?
+published_at: DateTime?
+platforms: JSON (list of platform strings)
+performance_score: Float? (0-100)
+created_at: DateTime
+updated_at: DateTime
+```
+
+### Trend
+```
+id: UUID (PK)
+topic: String
+platform: String (youtube, tiktok, instagram, twitter)
+volume_score: Float (0-100)
+velocity: String (rising, stable, declining)
+captured_at: DateTime
+metadata: JSON (platform-specific data)
+```
+
+### CreatorInstruction
+```
+id: UUID (PK)
+user_id: UUID (FK → User)
+instruction_text: Text (AI-generated)
+content_type: String
+context: JSON (why this instruction was generated)
+urgency: Enum[low, medium, high, urgent]
+read: Boolean (default false)
+created_at: DateTime
+```
+
+### Post
+```
+id: UUID (PK)
+content_piece_id: UUID (FK → ContentPiece)
+platform: String (youtube, tiktok, instagram, twitter)
+platform_post_id: String?
+status: Enum[pending, published, failed]
+scheduled_at: DateTime?
+published_at: DateTime?
+engagement: JSON (likes, views, shares, comments)
+```
+
+---
+
+## 5. Core Features
+
+### 5.1 AI Content Generator
+- User inputs topic + content type + target platform
+- GPT-4 generates full content: script/outline/captions/hashtags
+- Shows 3 variants per generation, user picks or regenerates
+- Saves as ContentPiece in draft state
+
+### 5.2 Trend Scanner
+- Aggregates trend data from YouTube, TikTok, Instagram APIs (mocked for MVP)
+- Displays top 20 trending topics with volume + velocity scores
+- Click a trend → generates content for that topic
+- Refreshes every 6 hours (manual + scheduled)
+
+### 5.3 Creator Instruction Engine
+- GPT-4 analyzes user's niche + past performance → generates daily instructions
+- Priority-ranked: Urgent (do today), Medium (this week), Low (opportunistic)
+- Each instruction links to a content piece or trend
+- Mark as "Done" or "Skip" — feeds into algorithm training
+
+### 5.4 Analytics Dashboard
+- Per-content-piece performance: views, likes, shares, comments, engagement rate
+- Per-platform breakdown
+- AI-generated insights: "Videos about X perform 40% better on Thursdays"
+- 30/60/90 day trend lines
+
+### 5.5 Post Scheduler
+- Schedule content pieces to Postiz for publishing
+- Visual calendar view of upcoming posts
+- One-click publish now / schedule for later
+
+### 5.6 n8n Automation Triggers
+- Webhook endpoints to trigger n8n workflows
+- On content published → trigger cross-posting workflow
+- On trend detected → trigger creator alert workflow
+
+---
+
+## 6. API Endpoints
+
+### Auth
+- `POST /api/v1/auth/register` — create account
+- `POST /api/v1/auth/login` — get JWT token
+- `GET /api/v1/auth/me` — current user profile
+
+### Content
+- `GET /api/v1/content` — list all content pieces
+- `POST /api/v1/content/generate` — AI generate content
+- `GET /api/v1/content/:id` — get single piece
+- `PUT /api/v1/content/:id` — update piece
+- `DELETE /api/v1/content/:id` — archive piece
+- `POST /api/v1/content/:id/schedule` — schedule to Postiz
+
+### Trends
+- `GET /api/v1/trends` — list current trends
+- `POST /api/v1/trends/refresh` — force refresh trend data
+
+### Instructions
+- `GET /api/v1/instructions` — list creator instructions
+- `POST /api/v1/instructions/generate` — generate new instructions
+- `PUT /api/v1/instructions/:id/read` — mark as read
+- `PUT /api/v1/instructions/:id/done` — mark as done
+
+### Analytics
+- `GET /api/v1/analytics/overview` — aggregate stats
+- `GET /api/v1/analytics/content/:id` — single piece stats
+- `GET /api/v1/analytics/platforms` — per-platform breakdown
+
+### Workflows
+- `POST /api/v1/workflows/trigger/trend-alert` — n8n trend webhook
+- `POST /api/v1/workflows/trigger/publish` — n8n publish webhook
+
+---
+
+## 7. Tech Stack
+
+| Layer | Technology |
+|-------|-----------|
+| Frontend | Next.js 14, TypeScript, Tailwind CSS, Lucide React |
+| Backend | Python 3.11, FastAPI, SQLAlchemy 2.0 (async) |
+| Database | PostgreSQL 15 |
+| AI | OpenAI GPT-4 Turbo (python-openai) |
+| Auth | JWT (PyJWT) + bcrypt |
+| HTTP | httpx (async) |
+| Validation | Pydantic v2 |
+| Scheduler | APScheduler |
+| Workflows | n8n webhooks |
+| Social API | Postiz API |
+
+---
+
+## 8. File Structure
+
+```
+JOB-20260424130040-d9c10a/
+├── SPEC.md
+├── README.md
+├── frontend/                     # Next.js 14 app
+│   ├── package.json
+│   ├── next.config.js
+│   ├── tailwind.config.js
+│   ├── tsconfig.json
+│   ├── src/
+│   │   ├── app/
+│   │   │   ├── layout.tsx
+│   │   │   ├── page.tsx          # Redirects to /dashboard
+│   │   │   ├── globals.css
+│   │   │   ├── dashboard/
+│   │   │   │   └── page.tsx
+│   │   │   ├── content/
+│   │   │   │   ├── page.tsx      # Content list
+│   │   │   │   └── generate/page.tsx
+│   │   │   ├── trends/
+│   │   │   │   └── page.tsx
+│   │   │   ├── instructions/
+│   │   │   │   └── page.tsx
+│   │   │   ├── analytics/
+│   │   │   │   └── page.tsx
+│   │   │   └── api/              # Next.js API routes (proxy)
+│   │   │       ├── auth/[...nextauth]/route.ts
+│   │   │       ├── content/route.ts
+│   │   │       └── trends/route.ts
+│   │   ├── components/
+│   │   │   ├── ui/              # shadcn-style primitives
+│   │   │   ├── Layout.tsx
+│   │   │   ├── Sidebar.tsx
+│   │   │   ├── Header.tsx
+│   │   │   ├── ContentCard.tsx
+│   │   │   ├── TrendCard.tsx
+│   │   │   ├── InstructionCard.tsx
+│   │   │   └── StatsCard.tsx
+│   │   ├── lib/
+│   │   │   ├── api.ts           # fetch wrapper
+│   │   │   └── utils.ts
+│   │   └── types/
+│   │       └── index.ts
+│   └── public/
+│
+├── backend/                      # Python FastAPI
+│   ├── requirements.txt
+│   ├── main.py                  # FastAPI app entry
+│   ├── config.py               # Settings
+│   ├── database.py             # Async SQLAlchemy session
+│   ├── models/
+│   │   ├── __init__.py
+│   │   ├── user.py
+│   │   ├── content.py
+│   │   ├── trend.py
+│   │   ├── instruction.py
+│   │   └── post.py
+│   ├── schemas/
+│   │   ├── __init__.py
+│   │   ├── auth.py
+│   │   ├── content.py
+│   │   ├── trend.py
+│   │   └── instruction.py
+│   ├── routers/
+│   │   ├── __init__.py
+│   │   ├── auth.py
+│   │   ├── content.py
+│   │   ├── trends.py
+│   │   ├── instructions.py
+│   │   ├── analytics.py
+│   │   └── workflows.py
+│   ├── services/
+│   │   ├── __init__.py
+│   │   ├── openai_service.py    # GPT-4 calls
+│   │   ├── trend_service.py     # Trend aggregation
+│   │   ├── postiz_service.py   # Postiz API client
+│   │   └── n8n_service.py      # n8n webhook triggers
+│   └── utils/
+│       ├── __init__.py
+│       └── security.py          # JWT + password hashing
+│
+├── docker-compose.yml           # PostgreSQL + backend + frontend
+├── Dockerfile.backend
+├── Dockerfile.frontend
+└── .env.example
+```
+
+---
+
+## 9. MVP Scope
+
+**Must ship:**
+1. Working auth (register/login with JWT)
+2. AI content generator (GPT-4, 3 variants)
+3. Content piece list (CRUD)
+4. Trend scanner (mock data, AI-analyzed)
+5. Creator instructions (GPT-4 generated)
+6. Analytics overview (aggregate stats)
+7. Post scheduler UI (Postiz integration)
+8. Dashboard overview
+
+**Defer to Phase 2:**
+- Real YouTube/TikTok/Instagram API integrations (use mock data)
+- n8n workflow editor (just trigger URLs)
+- Advanced algorithm training (MVP uses GPT-4 fine-tuning signals)
+
+---
+
+## 10. Quality Bar
+
+- Every page loads in <2s
+- AI generation shows streaming response
+- Empty states for all lists
+- Error toasts for all API failures
+- Mobile-responsive (breakpoints: 640px, 1024px)
+- All API endpoints return proper HTTP status codes + JSON error bodies
